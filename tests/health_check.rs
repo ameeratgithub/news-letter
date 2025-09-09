@@ -9,7 +9,7 @@ fn spawn_app() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
     // Get the port number given to us by the operating system
     let port = listener.local_addr().unwrap().port();
-    let server = news_letter::run(listener).expect("Failed to bind address");
+    let server = news_letter::startup::run(listener).expect("Failed to bind address");
     // Launch the server as a background task.
     let _ = tokio::spawn(server);
 
