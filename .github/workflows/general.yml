@@ -13,7 +13,7 @@ on:
 
 env:
     CARGO_TERM_COLOR: always
-    SQLX_VERSION: 0.8.0
+    SQLX_VERSION: 0.8.6
     SQLX_FEATURES: "rustls,postgres"
     APP_USER: app
     APP_USER_PWD: secret
@@ -77,6 +77,7 @@ jobs:
 
             - name: Check that queries are fresh
               run: cargo sqlx prepare --workspace --check -- --all-targets
+
     # Container job to check if code is properly formatted.
     fmt:
         name: Rustfmt
