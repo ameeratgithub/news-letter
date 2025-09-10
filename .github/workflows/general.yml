@@ -1,50 +1,157 @@
+# Name of the workflow. Will be displayed in Actions tab
 name: News Letter
 
-on: [push, pull_request]
+# Automatically triggers the workflow
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
 
 env:
     CARGO_TERM_COLOR: always
+    SQLX_VERSION: 0.8.0
+    SQLX_FEATURES: "rustls,postgres"
+    APP_USER: app
+    APP_USER_PWD: secret
+    APP_DB_NAME: newsletter
 
+# A workflow run is made up of one or more jobs. Each job runs in parallel by default
+# Each jobs run in a runner environment, specified by `runs-on` 
 jobs:
+    # Unique identifier of the job (`job_id`)
     test:
+        # Name of the job, which is displayed in the Github UI
         name: Test
+        # Containers must run in Linux based operating systems.
         runs-on: ubuntu-latest
+        services:
+          postgres:
+            # Docker Hub image
+            image: postgres:14
+            # Environment variables only scoped for `postgres`
+            env:
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: password
+              POSTGRES_DB: postgres
+            ports:
+              - 5432:5432
         steps:
-            - uses: actions/checkout@v3
-            - uses: dtolnay/rust-toolchain@stable
-            - uses: Swatinem/rust-cache@v2
+            # Downloads a copy of the code in your repository before running CI tests
+            - name: Check out repository code
+            # The `uses` keyword specifies that this step will run v4 of the actions/checkout action
+            # This is an action that checks out your repository onto the runner, allowing you to run
+            # scripts or other actions against your code (such as build and test tools).
+            # You should use the checkout action anytime your workflow will run against the repository's
+            # code 
+              uses: actions/checkout@v4
+            # This github action installs a Rust toolchain using rustup. It is designed for one-line concise
+            # usage and good defaults
+            - name: Install the Rust toolchain
+              uses: actions-rust-lang/setup-rust-toolchain@v1
+            - name: Install sqlx-cli
+              run: cargo install sqlx-cli
+                --version=${{env.SQLX_VERSION}}
+                --features ${{env.SQLX_FEATURES}}
+                --no-default-features
+                --locked
+            - name: Create app user in postgres
+              run: |
+                sudo apt-get install postgresql-client
+
+                # Create the application user
+                CREATE_QUERY="CREATE USER ${APP_USER} WITH PASSWORD '${APP_USER_PWD}';"
+                PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${CREATE_QUERY}"
+
+                # Grant create db priviledges to the app user
+                GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
+                PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
+            - name: Migrate database
+              run: SKIP_DOCKER=true ./scripts/init_db.sh
+
             - name: Run tests
               run: cargo test
+
+            - name: Check that queries are fresh
+              run: cargo sqlx prepare --workspace --check -- --all-targets
+    # Container job to check if code is properly formatted.
     fmt:
         name: Rustfmt
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v3
-            - uses: dtolnay/rust-toolchain@stable
+            - uses: actions/checkout@v4
+            - name: Install the Rust toolchain
+              uses: actions-rust-lang/setup-rust-toolchain@v1
               with:
                 components: rustfmt
             - name: Enforce formatting
               run: cargo fmt --check
+    # Container job to make sure general patterns used in code are idiomatic
     clippy:
         name: Clippy
         runs-on: ubuntu-latest
+        env:
+          # This environment variable forces sqlx to use its offline mode, which means that it will
+          # not attempt to connect to a database when running the tests. It'll instead use the cached
+          # query results. We check that the cached query results are up-to-date in another job, to
+          # speed up the overall CI pipeline.
+          SQLX_OFFLINE: true
         steps:
-            - uses: actions/checkout@v3
-            - uses: dtolnay/rust-toolchain@stable
+            - uses: actions/checkout@v4
+            - name: Install the rust toolchain
+              uses: actions-rust-lang/setup-rust-toolchain@v1
               with:
                 components: clippy
-            - uses: Swatinem/rust-cache@v2
             - name: Linting
               run: cargo clippy -- -D warnings
     coverage:
         name: Code coverage
         runs-on: ubuntu-latest
-        container:
-            image: xd009642/tarpaulin
-            options: --security-opt seccomp=unconfined
+        services:
+          postgres:
+            image: postgres:14
+            env:
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: password
+              POSTGRES_DB: postgres
+            ports:
+              - 5432:5432
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v3
-            - name: Generate code coverage
+              uses: actions/checkout@v4
+            - name: Install the Rust toolchain
+              uses: action-rust-lang/setup-rust-toolchain@v1
+              with:
+                components: llvm-tools-preview
+            - name: Install sqlx-cli
+              run: cargo install sqlx-cli
+                --version=${{ env.SQLX_VERSION }}
+                --features ${{ env.SQLX_FEATURES }}
+                --no-default-features
+                --locked
+            - name: Create app user in postgres
               run: |
-                cargo tarpaulin --verbose --workspace
+                sudo apt-get install postgresql-client
+
+                # Create application user
+                CREATE_QUERY="CREATE USER ${APP_USER} WITH PASSWORD '${APP_USER_PWD}';"
+                PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${CREATE_QUERY}"
+
+                # Grant create db priviledges to the app user
+                GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
+                PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
+            - name: Migrate database
+              run: SKIP_DOCKER=true ./scripts/init_db.sh
+            - name: Install cargo-llvm-cov
+              uses: taiki-e/install-action@cargo-llvm-cov
+            - name: Generate code coverage
+              run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+            - name: Generate report
+              uses: cargo llvm-cov report --html --output-dir coverage
+            - uses: actions/upload-artifact@v4
+              with:
+                name: "Coverage report"
+                path: coverage/
