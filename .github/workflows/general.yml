@@ -76,6 +76,7 @@ jobs:
               run: cargo test
 
             - name: Check that queries are fresh
+              # Add --check flag to make sure queries are up to date
               run: cargo sqlx prepare --workspace -- --all-targets
 
     # Container job to check if code is properly formatted.
