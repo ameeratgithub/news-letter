@@ -22,6 +22,9 @@ where
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter));
     let formatting_layer = BunyanFormattingLayer::new(name, sink);
+    // We've to use let and return to match return type. Otherwise it would get too much
+    // complicated
+    #[allow(clippy::let_and_return)]
     let subscriber = Registry::default()
         .with(env_filter)
         .with(JsonStorageLayer)
