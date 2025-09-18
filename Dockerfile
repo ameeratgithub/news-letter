@@ -5,13 +5,13 @@ WORKDIR /app
 # Install the required system dependencies for our linking configuration
 RUN apt update && apt install lld clang -y
 # First stage: computes the recipe file
-FROM chef as planner
+FROM chef AS planner
 # Copy all the files from working environment to our docker image
 COPY . .
 # Computing lock file for our project
 RUN cargo chef prepare --recipe-path recipe.json
 # Second stage: caches our dependencies and build the binary
-FROM chef as builder
+FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 # Building project dependencies. (Note: It's not a build for our application)
 RUN cargo chef cook --release --recipe-path recipe.json

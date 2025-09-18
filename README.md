@@ -1,9 +1,26 @@
-# Introduction
+# Production-Grade Newsletter Service
 This project a full, production-level implementation of a newsletter service. It demonstrates a deeper understanding of what is required to make a project available and maintainable using continuous integration and continuous delivery. 
 
 Best practices are implemented to ensure there will be **zero downtime** when a new feature is added, which I'll explain in the deployment (CI/CD) section.
 
-## What makes it production-grade application?
+## Getting Started
+To run the project locally, you would need following softwares installed on your machine.
+1. Rust
+2. Docker
+3. Optional - pgAdmin 4 
+
+After all the installation, you need to follow steps below:
+1. Install `lld` linker for faster compilation (`mold` is also another popular option). See `.cargo/config.toml` for more details. 
+   1. For docker builds, you don't need to install lld, because it's already included in `Dockerfile`. It's just for local cargo commands. 
+2. Run PostgreSQL instance by executing `./scripts/init_db.sh`
+   1. If postgres instance in docker is already up, and you want to just migrate database, run `SKIP_DOCKER=true ./scripts/init_db.sh`. It'll not try to launch a new instance. 
+   2. Make sure you've installed `psql`, a command line interface, to interact with PostgreSQL.
+   3. Also make sure you've installed `sqlx` by running `cargo install --version='~0.7' sqlx-cli --no-default-features --features rustls,postgres`
+   4. Run `cargo sqlx prepare`
+3. Build docker image by running `docker build --tag news-letter --file Dockerfile .`
+4. Run your application by executing `docker run -p 8000:8000 news-letter`  
+
+## Key Features and Architectural Principles
 Following things are taken care of, which are important in any production-grade application.
 
 1. **Modular code:** Each feature has its own module. The **separation of concerns** isn't taken lightly, and code is highly reusable.
